@@ -42,50 +42,33 @@ export function useAuth() {
   const fetchProfile = async (userId: string) => {
     try {
       console.log("Fetching profile for user:", userId)
+      setLoading(true)
 
-      // First, try to get the profile - DO NOT use .single()
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId)
+      // Query for profiles without using .single()
+      const { data: profiles, error } = await supabase.from("profiles").select("*").eq("id", userId)
 
       if (error) {
-        console.error("Error fetching profile:", error)
-        throw error
+        console.error("Error querying profiles:", error)
+        setProfile(null)
+        setLoading(false)
+        return
       }
 
-      console.log("Profile query result:", data)
+      console.log("Profile query result:", profiles)
 
-      if (!data || data.length === 0) {
-        console.log("No profile found for user, creating a default profile")
-
-        // Create a default profile if none exists
-        const { data: newProfile, error: createError } = await supabase
-          .from("profiles")
-          .insert({
-            id: userId,
-            email: "user@example.com", // This will be updated later
-            full_name: "New User",
-            class_number: 1,
-            graduation_year: new Date().getFullYear() + 4,
-            school_name: "Default School",
-          })
-          .select()
-
-        if (createError) {
-          console.error("Error creating default profile:", createError)
-          setProfile(null)
-        } else {
-          console.log("Created default profile:", newProfile?.[0])
-          setProfile(newProfile?.[0] || null)
-        }
-      } else if (data.length === 1) {
-        console.log("Profile found:", data[0])
-        setProfile(data[0])
+      // Handle different cases
+      if (!profiles || profiles.length === 0) {
+        console.log("No profile found, user needs to complete setup")
+        setProfile(null)
+      } else if (profiles.length === 1) {
+        console.log("Profile found:", profiles[0])
+        setProfile(profiles[0])
       } else {
-        console.warn("Multiple profiles found for user:", data)
-        // Use the first profile if multiple exist
-        setProfile(data[0])
+        console.warn("Multiple profiles found, using first one:", profiles)
+        setProfile(profiles[0])
       }
     } catch (error) {
-      console.error("Error in fetchProfile:", error)
+      console.error("Unexpected error in fetchProfile:", error)
       setProfile(null)
     } finally {
       setLoading(false)

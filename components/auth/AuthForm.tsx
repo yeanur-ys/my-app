@@ -50,36 +50,6 @@ export function AuthForm() {
       }
 
       console.log("Sign in successful:", data.user?.id)
-
-      // Check if profile exists
-      if (data.user) {
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", data.user.id)
-
-        if (profileError) {
-          console.error("Error checking profile:", profileError)
-        } else if (!profileData || profileData.length === 0) {
-          console.log("No profile found, creating one...")
-
-          // Create a basic profile
-          const { error: createError } = await supabase.from("profiles").insert({
-            id: data.user.id,
-            email: data.user.email || "",
-            full_name: "New User",
-            class_number: 1,
-            graduation_year: new Date().getFullYear() + 4,
-            school_name: "Default School",
-          })
-
-          if (createError) {
-            console.error("Error creating profile:", createError)
-          } else {
-            console.log("Profile created successfully")
-          }
-        }
-      }
     } catch (err: any) {
       console.error("Sign in error:", err)
       setError(err.message || "An error occurred during sign in")
@@ -111,10 +81,10 @@ export function AuthForm() {
       if (authData.user) {
         console.log("User created:", authData.user.id)
 
-        // Check if profile already exists
-        const { data: existingProfile } = await supabase.from("profiles").select("id").eq("id", authData.user.id)
+        // Check if profile already exists (without .single())
+        const { data: existingProfiles } = await supabase.from("profiles").select("id").eq("id", authData.user.id)
 
-        if (existingProfile && existingProfile.length > 0) {
+        if (existingProfiles && existingProfiles.length > 0) {
           console.log("Profile already exists, skipping creation")
         } else {
           // Create profile
@@ -139,20 +109,20 @@ export function AuthForm() {
         const communityName = `Class ${signUpData.classNumber} - ${signUpData.graduationYear}`
         console.log("Looking for community:", communityName)
 
-        const { data: existingCommunity } = await supabase
+        // Check for existing community (without .single())
+        const { data: existingCommunities } = await supabase
           .from("communities")
           .select("id")
           .eq("class_number", Number.parseInt(signUpData.classNumber))
           .eq("graduation_year", Number.parseInt(signUpData.graduationYear))
           .eq("school_name", signUpData.schoolName)
-          .single()
 
-        let communityId = existingCommunity?.id
+        let communityId = existingCommunities?.[0]?.id
 
-        if (!existingCommunity) {
+        if (!communityId) {
           console.log("Creating new community...")
           // Create new community
-          const { data: newCommunity, error: communityError } = await supabase
+          const { data: newCommunities, error: communityError } = await supabase
             .from("communities")
             .insert({
               name: communityName,
@@ -164,13 +134,12 @@ export function AuthForm() {
               color: "bg-blue-500",
             })
             .select("id")
-            .single()
 
           if (communityError) {
             console.error("Community creation error:", communityError)
             throw communityError
           }
-          communityId = newCommunity.id
+          communityId = newCommunities?.[0]?.id
           console.log("Community created:", communityId)
         } else {
           console.log("Using existing community:", communityId)
@@ -180,14 +149,14 @@ export function AuthForm() {
         if (communityId) {
           console.log("Adding user to community...")
 
-          // Check if membership already exists
-          const { data: existingMembership } = await supabase
+          // Check if membership already exists (without .single())
+          const { data: existingMemberships } = await supabase
             .from("community_members")
             .select("id")
             .eq("user_id", authData.user.id)
             .eq("community_id", communityId)
 
-          if (existingMembership && existingMembership.length > 0) {
+          if (existingMemberships && existingMemberships.length > 0) {
             console.log("User already member of community")
           } else {
             const { error: memberError } = await supabase.from("community_members").insert({

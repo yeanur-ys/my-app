@@ -180,12 +180,185 @@ function MessageInput({
   )
 }
 
+// Profile Setup Component
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { supabase } from "@/lib/supabase"
+
+function ProfileSetup({ user, onProfileCreated }: { user: any; onProfileCreated: () => void }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [profileData, setProfileData] = useState({
+    fullName: "",
+    classNumber: "",
+    graduationYear: "",
+    schoolName: "Default School",
+  })
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Create profile
+      const { error: profileError } = await supabase.from("profiles").insert({
+        id: user.id,
+        email: user.email || "",
+        full_name: profileData.fullName,
+        class_number: Number.parseInt(profileData.classNumber),
+        graduation_year: Number.parseInt(profileData.graduationYear),
+        school_name: profileData.schoolName,
+      })
+
+      if (profileError) throw profileError
+
+      // Create or get community
+      const communityName = `Class ${profileData.classNumber} - ${profileData.graduationYear}`
+
+      const { data: existingCommunities } = await supabase
+        .from("communities")
+        .select("id")
+        .eq("class_number", Number.parseInt(profileData.classNumber))
+        .eq("graduation_year", Number.parseInt(profileData.graduationYear))
+        .eq("school_name", profileData.schoolName)
+
+      let communityId = existingCommunities?.[0]?.id
+
+      if (!communityId) {
+        const { data: newCommunities, error: communityError } = await supabase
+          .from("communities")
+          .insert({
+            name: communityName,
+            description: `Community for Class ${profileData.classNumber} graduating in ${profileData.graduationYear}`,
+            class_number: Number.parseInt(profileData.classNumber),
+            graduation_year: Number.parseInt(profileData.graduationYear),
+            school_name: profileData.schoolName,
+            icon: "🎓",
+            color: "bg-blue-500",
+          })
+          .select("id")
+
+        if (communityError) throw communityError
+        communityId = newCommunities?.[0]?.id
+      }
+
+      // Add user to community
+      if (communityId) {
+        const { error: memberError } = await supabase.from("community_members").insert({
+          user_id: user.id,
+          community_id: communityId,
+        })
+
+        if (memberError) throw memberError
+      }
+
+      onProfileCreated()
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: 20 }, (_, i) => currentYear - 10 + i)
+  const classes = Array.from({ length: 12 }, (_, i) => i + 1)
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">Complete Your Profile</CardTitle>
+          <CardDescription>Set up your profile to join your school community</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="Enter your full name"
+                value={profileData.fullName}
+                onChange={(e) => setProfileData({ ...profileData, fullName: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="class">Class</Label>
+                <Select
+                  value={profileData.classNumber}
+                  onValueChange={(value) => setProfileData({ ...profileData, classNumber: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {classes.map((classNum) => (
+                      <SelectItem key={classNum} value={classNum.toString()}>
+                        Class {classNum}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="year">Graduation Year</Label>
+                <Select
+                  value={profileData.graduationYear}
+                  onValueChange={(value) => setProfileData({ ...profileData, graduationYear: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {years.map((year) => (
+                      <SelectItem key={year} value={year.toString()}>
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="school">School Name</Label>
+              <Input
+                id="school"
+                type="text"
+                placeholder="Enter your school name"
+                value={profileData.schoolName}
+                onChange={(e) => setProfileData({ ...profileData, schoolName: e.target.value })}
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Complete Setup
+            </Button>
+          </form>
+
+          {error && (
+            <Alert className="mt-4" variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 export default function SchoolCommunityChat() {
   const { user, profile, loading: authLoading, signOut } = useAuth()
   const { communities, loading: communitiesLoading, error: communitiesError } = useCommunities(user?.id || null)
   const [selectedCommunity, setSelectedCommunity] = useState<any>(null)
   const [showDashboard, setShowDashboard] = useState(true)
   const [sendingMessage, setSendingMessage] = useState(false)
+  const [profileSetupKey, setProfileSetupKey] = useState(0)
   const {
     messages,
     loading: messagesLoading,
@@ -223,6 +396,12 @@ export default function SchoolCommunityChat() {
     setSelectedCommunity(null)
   }
 
+  const handleProfileCreated = () => {
+    setProfileSetupKey((prev) => prev + 1)
+    // Force a refresh of the auth state
+    window.location.reload()
+  }
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -235,16 +414,9 @@ export default function SchoolCommunityChat() {
     return <AuthForm />
   }
 
-  // Show loading if user exists but profile is still loading
+  // Show profile setup if user exists but no profile
   if (!profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Setting up your profile...</p>
-        </div>
-      </div>
-    )
+    return <ProfileSetup key={profileSetupKey} user={user} onProfileCreated={handleProfileCreated} />
   }
 
   // Calculate total messages sent by user
