@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import type { Database } from "@/lib/supabase"
+import type { RealtimeChannel } from "@supabase/supabase-js"
 
 type Message = Database["public"]["Tables"]["messages"]["Row"] & {
   profiles: {
@@ -16,7 +17,7 @@ export function useRealTimeMessages(communityId: string | null) {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const subscriptionRef = useRef<any>(null)
+  const channelRef = useRef<RealtimeChannel | null>(null)
 
   useEffect(() => {
     if (!communityId) {
@@ -25,11 +26,15 @@ export function useRealTimeMessages(communityId: string | null) {
       return
     }
 
+    let isMounted = true
+
     // Fetch initial messages
     const fetchMessages = async () => {
       try {
         setLoading(true)
         setError(null)
+
+        console.log("Fetching messages for community:", communityId)
 
         const { data, error: fetchError } = await supabase
           .from("messages")
@@ -47,27 +52,37 @@ export function useRealTimeMessages(communityId: string | null) {
         if (fetchError) {
           console.error("Error fetching messages:", fetchError)
           setError(fetchError.message)
-        } else {
+        } else if (isMounted) {
+          console.log("Fetched messages:", data)
           setMessages(data as Message[])
         }
       } catch (err) {
         console.error("Unexpected error:", err)
-        setError("Failed to load messages")
+        if (isMounted) {
+          setError("Failed to load messages")
+        }
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     fetchMessages()
 
     // Clean up previous subscription
-    if (subscriptionRef.current) {
-      subscriptionRef.current.unsubscribe()
+    if (channelRef.current) {
+      console.log("Unsubscribing from previous channel")
+      supabase.removeChannel(channelRef.current)
+      channelRef.current = null
     }
 
-    // Subscribe to real-time changes
-    subscriptionRef.current = supabase
-      .channel(`messages-${communityId}`)
+    // Create new channel for real-time updates
+    const channelName = `messages:community_id=eq.${communityId}`
+    console.log("Creating channel:", channelName)
+
+    channelRef.current = supabase
+      .channel(channelName)
       .on(
         "postgres_changes",
         {
@@ -77,34 +92,65 @@ export function useRealTimeMessages(communityId: string | null) {
           filter: `community_id=eq.${communityId}`,
         },
         async (payload) => {
-          console.log("New message received:", payload)
+          console.log("Real-time message received:", payload)
 
-          // Fetch the complete message with profile data
-          const { data } = await supabase
-            .from("messages")
-            .select(`
-              *,
-              profiles:user_id (
-                full_name,
-                avatar_url,
-                is_online
-              )
-            `)
-            .eq("id", payload.new.id)
-            .single()
+          if (!isMounted) return
 
-          if (data) {
-            setMessages((prev) => [...prev, data as Message])
+          try {
+            // Fetch the complete message with profile data
+            const { data: messageData, error: messageError } = await supabase
+              .from("messages")
+              .select(`
+                *,
+                profiles:user_id (
+                  full_name,
+                  avatar_url,
+                  is_online
+                )
+              `)
+              .eq("id", payload.new.id)
+              .single()
+
+            if (messageError) {
+              console.error("Error fetching new message details:", messageError)
+              return
+            }
+
+            if (messageData && isMounted) {
+              console.log("Adding new message to state:", messageData)
+              setMessages((prevMessages) => {
+                // Check if message already exists to prevent duplicates
+                const exists = prevMessages.some((msg) => msg.id === messageData.id)
+                if (exists) {
+                  console.log("Message already exists, skipping")
+                  return prevMessages
+                }
+                return [...prevMessages, messageData as Message]
+              })
+            }
+          } catch (err) {
+            console.error("Error processing real-time message:", err)
           }
         },
       )
       .subscribe((status) => {
         console.log("Subscription status:", status)
+        if (status === "SUBSCRIBED") {
+          console.log("Successfully subscribed to real-time updates")
+        } else if (status === "CHANNEL_ERROR") {
+          console.error("Channel subscription error")
+          if (isMounted) {
+            setError("Real-time connection failed")
+          }
+        }
       })
 
     return () => {
-      if (subscriptionRef.current) {
-        subscriptionRef.current.unsubscribe()
+      isMounted = false
+      if (channelRef.current) {
+        console.log("Cleaning up channel subscription")
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
       }
     }
   }, [communityId])
@@ -124,7 +170,15 @@ export function useRealTimeMessages(communityId: string | null) {
           user_id: userId,
           community_id: communityId,
         })
-        .select()
+        .select(`
+          *,
+          profiles:user_id (
+            full_name,
+            avatar_url,
+            is_online
+          )
+        `)
+        .single()
 
       if (error) {
         console.error("Error sending message:", error)
@@ -132,6 +186,10 @@ export function useRealTimeMessages(communityId: string | null) {
       }
 
       console.log("Message sent successfully:", data)
+
+      // Note: We don't add the message to state here because the real-time subscription will handle it
+      // This prevents duplicate messages
+
       return data
     } catch (err) {
       console.error("Failed to send message:", err)

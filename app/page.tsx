@@ -3,15 +3,11 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { Hash, Send, Settings, Users, Moon, Sun, MoreVertical, Smile, LogOut, Home } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import { Hash, Send, Settings, Users, Moon, Sun, Smile, LogOut, Home } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Sidebar,
@@ -25,9 +21,13 @@ import {
   SidebarTrigger,
   SidebarInset,
 } from "@/components/ui/sidebar"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useTheme } from "next-themes"
 import { AuthForm } from "@/components/auth/AuthForm"
 import { Dashboard } from "@/components/Dashboard"
+import { MessagesList } from "@/components/MessagesList"
+import { ConnectionIndicator } from "@/components/ConnectionIndicator"
 import { useAuth } from "@/hooks/useAuth"
 import { useCommunities } from "@/hooks/useCommunities"
 import { useRealTimeMessages } from "@/hooks/useRealTimeMessages"
@@ -128,52 +128,6 @@ function CommunitySidebar({
         </div>
       </SidebarFooter>
     </Sidebar>
-  )
-}
-
-function MessageBubble({ message }: { message: any }) {
-  return (
-    <Card className="mb-4 border-0 shadow-sm">
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="relative">
-            <Avatar className="h-8 w-8">
-              <AvatarImage
-                src={message.profiles?.avatar_url || generateAvatarUrl(message.profiles?.full_name)}
-                alt={message.profiles?.full_name || "User"}
-              />
-              <AvatarFallback>{(message.profiles?.full_name || "U").charAt(0)}</AvatarFallback>
-            </Avatar>
-            {message.profiles?.is_online && (
-              <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />
-            )}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-medium text-sm">{message.profiles?.full_name || "Unknown User"}</span>
-              <span className="text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
-              </span>
-            </div>
-            <p className="text-sm leading-relaxed">{message.content}</p>
-          </div>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100">
-                <MoreVertical className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem>Reply</DropdownMenuItem>
-              <DropdownMenuItem>React</DropdownMenuItem>
-              <DropdownMenuItem>Copy</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </CardContent>
-    </Card>
   )
 }
 
@@ -317,6 +271,7 @@ export default function SchoolCommunityChat() {
                     <Users className="h-3 w-3 mr-1" />
                     Class {selectedCommunity.class_number}
                   </Badge>
+                  <ConnectionIndicator isConnected={!messagesError && !messagesLoading} isLoading={messagesLoading} />
                 </div>
               ) : null}
             </div>
@@ -366,21 +321,7 @@ export default function SchoolCommunityChat() {
                     <AlertDescription>Error loading messages: {messagesError}</AlertDescription>
                   </Alert>
                 )}
-                {messagesLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <p>No messages yet. Be the first to say hello! 👋</p>
-                  </div>
-                ) : (
-                  messages.map((message) => (
-                    <div key={message.id} className="group">
-                      <MessageBubble message={message} />
-                    </div>
-                  ))
-                )}
+                <MessagesList messages={messages || []} loading={messagesLoading} error={messagesError} />
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground">
