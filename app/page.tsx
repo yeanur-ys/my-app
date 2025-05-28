@@ -231,8 +231,20 @@ export default function SchoolCommunityChat() {
     )
   }
 
-  if (!user || !profile) {
+  if (!user) {
     return <AuthForm />
+  }
+
+  // Show loading if user exists but profile is still loading
+  if (!profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Setting up your profile...</p>
+        </div>
+      </div>
+    )
   }
 
   // Calculate total messages sent by user

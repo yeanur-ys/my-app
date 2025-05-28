@@ -32,6 +32,62 @@ export function AuthForm() {
     password: "",
   })
 
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    try {
+      console.log("Attempting sign in...")
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: signInData.email,
+        password: signInData.password,
+      })
+
+      if (error) {
+        console.error("Sign in error:", error)
+        throw error
+      }
+
+      console.log("Sign in successful:", data.user?.id)
+
+      // Check if profile exists
+      if (data.user) {
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", data.user.id)
+
+        if (profileError) {
+          console.error("Error checking profile:", profileError)
+        } else if (!profileData || profileData.length === 0) {
+          console.log("No profile found, creating one...")
+
+          // Create a basic profile
+          const { error: createError } = await supabase.from("profiles").insert({
+            id: data.user.id,
+            email: data.user.email || "",
+            full_name: "New User",
+            class_number: 1,
+            graduation_year: new Date().getFullYear() + 4,
+            school_name: "Default School",
+          })
+
+          if (createError) {
+            console.error("Error creating profile:", createError)
+          } else {
+            console.log("Profile created successfully")
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error("Sign in error:", err)
+      setError(err.message || "An error occurred during sign in")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -39,29 +95,49 @@ export function AuthForm() {
     setSuccess(null)
 
     try {
+      console.log("Starting sign up process...")
+
       // Sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: signUpData.email,
         password: signUpData.password,
       })
 
-      if (authError) throw authError
+      if (authError) {
+        console.error("Auth error:", authError)
+        throw authError
+      }
 
       if (authData.user) {
-        // Create profile
-        const { error: profileError } = await supabase.from("profiles").insert({
-          id: authData.user.id,
-          email: signUpData.email,
-          full_name: signUpData.fullName,
-          class_number: Number.parseInt(signUpData.classNumber),
-          graduation_year: Number.parseInt(signUpData.graduationYear),
-          school_name: signUpData.schoolName,
-        })
+        console.log("User created:", authData.user.id)
 
-        if (profileError) throw profileError
+        // Check if profile already exists
+        const { data: existingProfile } = await supabase.from("profiles").select("id").eq("id", authData.user.id)
+
+        if (existingProfile && existingProfile.length > 0) {
+          console.log("Profile already exists, skipping creation")
+        } else {
+          // Create profile
+          console.log("Creating profile...")
+          const { error: profileError } = await supabase.from("profiles").insert({
+            id: authData.user.id,
+            email: signUpData.email,
+            full_name: signUpData.fullName,
+            class_number: Number.parseInt(signUpData.classNumber),
+            graduation_year: Number.parseInt(signUpData.graduationYear),
+            school_name: signUpData.schoolName,
+          })
+
+          if (profileError) {
+            console.error("Profile creation error:", profileError)
+            throw profileError
+          }
+          console.log("Profile created successfully")
+        }
 
         // Create or get community for this class and year
         const communityName = `Class ${signUpData.classNumber} - ${signUpData.graduationYear}`
+        console.log("Looking for community:", communityName)
 
         const { data: existingCommunity } = await supabase
           .from("communities")
@@ -74,6 +150,7 @@ export function AuthForm() {
         let communityId = existingCommunity?.id
 
         if (!existingCommunity) {
+          console.log("Creating new community...")
           // Create new community
           const { data: newCommunity, error: communityError } = await supabase
             .from("communities")
@@ -89,43 +166,48 @@ export function AuthForm() {
             .select("id")
             .single()
 
-          if (communityError) throw communityError
+          if (communityError) {
+            console.error("Community creation error:", communityError)
+            throw communityError
+          }
           communityId = newCommunity.id
+          console.log("Community created:", communityId)
+        } else {
+          console.log("Using existing community:", communityId)
         }
 
         // Add user to community
         if (communityId) {
-          const { error: memberError } = await supabase.from("community_members").insert({
-            user_id: authData.user.id,
-            community_id: communityId,
-          })
+          console.log("Adding user to community...")
 
-          if (memberError) throw memberError
+          // Check if membership already exists
+          const { data: existingMembership } = await supabase
+            .from("community_members")
+            .select("id")
+            .eq("user_id", authData.user.id)
+            .eq("community_id", communityId)
+
+          if (existingMembership && existingMembership.length > 0) {
+            console.log("User already member of community")
+          } else {
+            const { error: memberError } = await supabase.from("community_members").insert({
+              user_id: authData.user.id,
+              community_id: communityId,
+            })
+
+            if (memberError) {
+              console.error("Membership creation error:", memberError)
+              throw memberError
+            }
+            console.log("User added to community successfully")
+          }
         }
 
-        setSuccess("Account created successfully! Please check your email to verify your account.")
+        setSuccess("Account created successfully! You can now sign in.")
       }
     } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: signInData.email,
-        password: signInData.password,
-      })
-
-      if (error) throw error
-    } catch (err: any) {
-      setError(err.message)
+      console.error("Sign up error:", err)
+      setError(err.message || "An error occurred during sign up")
     } finally {
       setLoading(false)
     }

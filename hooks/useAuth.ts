@@ -41,19 +41,66 @@ export function useAuth() {
 
   const fetchProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
+      console.log("Fetching profile for user:", userId)
 
-      if (error) throw error
-      setProfile(data)
+      // First, try to get the profile - DO NOT use .single()
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId)
+
+      if (error) {
+        console.error("Error fetching profile:", error)
+        throw error
+      }
+
+      console.log("Profile query result:", data)
+
+      if (!data || data.length === 0) {
+        console.log("No profile found for user, creating a default profile")
+
+        // Create a default profile if none exists
+        const { data: newProfile, error: createError } = await supabase
+          .from("profiles")
+          .insert({
+            id: userId,
+            email: "user@example.com", // This will be updated later
+            full_name: "New User",
+            class_number: 1,
+            graduation_year: new Date().getFullYear() + 4,
+            school_name: "Default School",
+          })
+          .select()
+
+        if (createError) {
+          console.error("Error creating default profile:", createError)
+          setProfile(null)
+        } else {
+          console.log("Created default profile:", newProfile?.[0])
+          setProfile(newProfile?.[0] || null)
+        }
+      } else if (data.length === 1) {
+        console.log("Profile found:", data[0])
+        setProfile(data[0])
+      } else {
+        console.warn("Multiple profiles found for user:", data)
+        // Use the first profile if multiple exist
+        setProfile(data[0])
+      }
     } catch (error) {
-      console.error("Error fetching profile:", error)
+      console.error("Error in fetchProfile:", error)
+      setProfile(null)
     } finally {
       setLoading(false)
     }
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error("Error signing out:", error)
+      }
+    } catch (error) {
+      console.error("Unexpected error during sign out:", error)
+    }
   }
 
   return {

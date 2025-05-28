@@ -18,6 +18,7 @@ export function useCommunities(userId: string | null) {
       return
     }
 
+    // Make sure we're not using .single() in the communities query
     const fetchCommunities = async () => {
       try {
         setLoading(true)
@@ -26,20 +27,20 @@ export function useCommunities(userId: string | null) {
         const { data, error: fetchError } = await supabase
           .from("community_members")
           .select(`
-            communities (
-              id,
-              name,
-              description,
-              class_number,
-              graduation_year,
-              school_name,
-              icon,
-              color,
-              member_count,
-              created_at,
-              updated_at
-            )
-          `)
+        communities (
+          id,
+          name,
+          description,
+          class_number,
+          graduation_year,
+          school_name,
+          icon,
+          color,
+          member_count,
+          created_at,
+          updated_at
+        )
+      `)
           .eq("user_id", userId)
 
         if (fetchError) {
