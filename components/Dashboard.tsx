@@ -4,6 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Users, MessageCircle, Calendar, GraduationCap } from "lucide-react"
+import type { Profile, Community, User } from "../types/entities"
+import ErrorMessage from "../components/ErrorMessage"
+import { DEFAULT_SCHOOL_NAME, DEFAULT_COMMUNITY_COLOR } from "../constants/defaults"
+import { useEffect, useState } from "react"
 
 interface DashboardProps {
   profile: any
@@ -14,13 +18,18 @@ interface DashboardProps {
 // Generate consistent avatar URLs based on name
 const generateAvatarUrl = (name: string, seed?: string) => {
   const seedValue = seed || name?.toLowerCase().replace(/\s+/g, "") || "default"
-  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seedValue}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`
-}
+  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seedValue}&backgroundColor=b`
 
 export function Dashboard({ profile, communities, totalMessages }: DashboardProps) {
   const currentYear = new Date().getFullYear()
   const yearsUntilGraduation = profile?.graduation_year - currentYear
   const hasGraduated = yearsUntilGraduation <= 0
+
+  useEffect(() => {
+    if (!showDashboard && communities.length > 0) {
+      setSelectedCommunity(communities[0]);
+    }
+  }, [showDashboard, communities]);
 
   return (
     <div className="p-6 space-y-6">
@@ -167,6 +176,8 @@ export function Dashboard({ profile, communities, totalMessages }: DashboardProp
           </div>
         </CardContent>
       </Card>
+
+      <ErrorMessage message={error} />
     </div>
   )
 }

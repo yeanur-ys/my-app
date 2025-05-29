@@ -1,77 +1,93 @@
-import { NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase-admin"
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import type { Profile, Community, User } from "../types/entities";
+import { DEFAULT_SCHOOL_NAME, DEFAULT_COMMUNITY_COLOR } from "../constants/defaults";
 
-export async function POST(request: Request) {
-  try {
-    const { userId, email, fullName, classNumber, graduationYear, schoolName } = await request.json()
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-    if (!userId) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 })
-    }
+export async function POST(req: NextRequest) {
+  const { userId, name, year, className, communityName, communityColor } = await req.json();
 
-    // Create profile using admin client to bypass RLS
-    const { error: profileError } = await supabaseAdmin.from("profiles").insert({
-      id: userId,
-      email: email || "",
-      full_name: fullName || "New User",
-      class_number: Number.parseInt(classNumber) || 1,
-      graduation_year: Number.parseInt(graduationYear) || new Date().getFullYear() + 4,
-      school_name: schoolName || "Default School",
-    })
+  // Create profile
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .insert([{ id: userId, name, year, class: className }])
+    .select()
+    .single();
 
-    if (profileError) {
-      console.error("Profile creation error:", profileError)
-      return NextResponse.json({ error: profileError.message }, { status: 500 })
-    }
-
-    // Create or get community
-    const { data: existingCommunities } = await supabaseAdmin
-      .from("communities")
-      .select("id")
-      .eq("class_number", Number.parseInt(classNumber) || 1)
-      .eq("graduation_year", Number.parseInt(graduationYear) || new Date().getFullYear() + 4)
-      .eq("school_name", schoolName || "Default School")
-
-    let communityId = existingCommunities?.[0]?.id
-
-    if (!communityId) {
-      const communityName = `Class ${classNumber} - ${graduationYear}`
-      const { data: newCommunities, error: communityError } = await supabaseAdmin
-        .from("communities")
-        .insert({
-          name: communityName,
-          description: `Community for Class ${classNumber} graduating in ${graduationYear}`,
-          class_number: Number.parseInt(classNumber) || 1,
-          graduation_year: Number.parseInt(graduationYear) || new Date().getFullYear() + 4,
-          school_name: schoolName || "Default School",
-          icon: "🎓",
-          color: "bg-blue-500",
-        })
-        .select("id")
-
-      if (communityError) {
-        console.error("Community creation error:", communityError)
-        return NextResponse.json({ error: communityError.message }, { status: 500 })
-      }
-      communityId = newCommunities?.[0]?.id
-    }
-
-    // Add user to community
-    if (communityId) {
-      const { error: memberError } = await supabaseAdmin.from("community_members").insert({
-        user_id: userId,
-        community_id: communityId,
-      })
-
-      if (memberError) {
-        console.error("Membership creation error:", memberError)
-        return NextResponse.json({ error: memberError.message }, { status: 500 })
-      }
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (error: any) {
-    console.error("Unexpected error:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (profileError) {
+    return NextResponse.json({ error: profileError.message }, { status: 400 });
   }
+
+  // Optionally create community
+  let community = null;
+  if (communityName) {
+    const { data: communityData, error: communityError } = await supabase
+      .from("communities")
+      .insert([{ name: communityName, color: communityColor, owner_id: userId }])
+      .select()
+      .single();
+
+    if (communityError) {
+      return NextResponse.json({ error: communityError.message }, { status: 400 });
+    }
+    community = communityData;
+  }
+
+  return NextResponse.json({ profile, community });
 }
+
+const YourComponent = () => {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [communities, setCommunities] = useState<Community[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+
+  // ...existing code...
+  useEffect(() => {
+    // When switching from dashboard to chat, reset selectedCommunity
+    if (!showDashboard && communities.length > 0) {
+      setSelectedCommunity(communities[0]);
+    }
+  }, [showDashboard, communities]);
+
+  const handleProfileSubmit = async (formData: {
+    name: string;
+    year: number;
+    class: string;
+    communityName?: string;
+    communityColor?: string;
+  }) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/create-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          name: formData.name,
+          year: formData.year,
+          className: formData.class,
+          communityName: formData.communityName || DEFAULT_SCHOOL_NAME,
+          communityColor: formData.communityColor || DEFAULT_COMMUNITY_COLOR,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create profile");
+
+      // Optionally update state with new profile/community
+      setProfile(data.profile);
+      if (data.community) setCommunities((prev) => [...prev, data.community]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ...existing code...
+};
+
+export default YourComponent;

@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import type { Profile, Community, User } from "../types/entities";
 
 import { useState, useEffect } from "react"
 import { Hash, Send, Settings, Users, Moon, Sun, Smile, LogOut, Home } from "lucide-react"
@@ -32,6 +33,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useCommunities } from "@/hooks/useCommunities"
 import { useRealTimeMessages } from "@/hooks/useRealTimeMessages"
 import { Loader2 } from "lucide-react"
+import { DEFAULT_SCHOOL_NAME, DEFAULT_COMMUNITY_COLOR } from "../constants/defaults";
 
 // Generate consistent avatar URLs
 const generateAvatarUrl = (name: string, seed?: string) => {
@@ -106,7 +108,11 @@ function CommunitySidebar({
                 className="h-12 justify-start gap-3"
               >
                 <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-full ${community.color} text-white text-sm font-medium`}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    community.color && typeof community.color === "string"
+                      ? community.color
+                      : DEFAULT_COMMUNITY_COLOR
+                  }`}
                 >
                   {community.icon}
                 </div>
@@ -263,6 +269,11 @@ function ProfileSetup({ user, onProfileCreated }: { user: any; onProfileCreated:
       }
 
       onProfileCreated()
+
+      // After API call
+      // Instead of updating local state, refetch from the server:
+      await refetchProfile();      // Custom hook or function to fetch latest profile
+      await refetchCommunities();  // Custom hook or function to fetch latest communities
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -381,6 +392,14 @@ export default function SchoolCommunityChat() {
     }
   }, [communities, selectedCommunity, showDashboard])
 
+  // Reset selectedCommunity when switching from dashboard to chat
+  useEffect(() => {
+    // When switching from dashboard to chat, reset selectedCommunity
+    if (!showDashboard && communities.length > 0) {
+      setSelectedCommunity(communities[0]);
+    }
+  }, [showDashboard, communities]);
+
   const handleSendMessage = async (content: string) => {
     if (user && selectedCommunity) {
       try {
@@ -428,7 +447,7 @@ export default function SchoolCommunityChat() {
   }
 
   // Calculate total messages sent by user
-  const totalMessages = messages.filter((msg) => msg.user_id === user.id).length
+  const totalMessages = (messages ?? []).filter((msg) => msg.user_id === user.id).length
 
   return (
     <SidebarProvider>

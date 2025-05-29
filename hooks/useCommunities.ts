@@ -18,7 +18,6 @@ export function useCommunities(userId: string | null) {
       return
     }
 
-    // Make sure we're not using .single() in the communities query
     const fetchCommunities = async () => {
       try {
         setLoading(true)
@@ -47,7 +46,6 @@ export function useCommunities(userId: string | null) {
           console.error("Error fetching communities:", fetchError)
           setError(fetchError.message)
         } else {
-          // Extract communities from the nested structure
           const communitiesData = data?.map((item) => item.communities).filter(Boolean) as Community[]
           setCommunities(communitiesData || [])
         }
@@ -68,3 +66,8 @@ export function useCommunities(userId: string | null) {
     error,
   }
 }
+
+// After API call
+// Instead of updating local state, refetch from the server:
+await refetchProfile();      // Custom hook or function to fetch latest profile
+await refetchCommunities();  // Custom hook or function to fetch latest communities
