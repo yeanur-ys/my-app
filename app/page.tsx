@@ -190,10 +190,10 @@ function ProfileSetup({ user, onProfileCreated }: { user: any; onProfileCreated:
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [profileData, setProfileData] = useState({
-    fullName: "",
-    classNumber: "",
-    graduationYear: "",
-    schoolName: "Default School",
+    fullName: user.user_metadata?.full_name || "",
+    classNumber: user.user_metadata?.class_number || "1",
+    graduationYear: user.user_metadata?.graduation_year || "2025",
+    schoolName: user.user_metadata?.school_name || "Default School",
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -202,68 +202,41 @@ function ProfileSetup({ user, onProfileCreated }: { user: any; onProfileCreated:
     setError(null)
 
     try {
-      // Create profile
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: user.id,
-        email: user.email || "",
-        full_name: profileData.fullName,
-        class_number: Number.parseInt(profileData.classNumber),
-        graduation_year: Number.parseInt(profileData.graduationYear),
-        school_name: profileData.schoolName,
+      console.log("Creating profile using database function...")
+
+      // Use the database function to create profile and community
+      const { data, error: functionError } = await supabase.rpc("create_user_profile", {
+        user_id: user.id,
+        user_email: user.email || "",
+        user_full_name: profileData.fullName.trim(),
+        user_class_number: Number.parseInt(profileData.classNumber),
+        user_graduation_year: Number.parseInt(profileData.graduationYear),
+        user_school_name: profileData.schoolName.trim(),
       })
 
-      if (profileError) throw profileError
-
-      // Create or get community
-      const communityName = `Class ${profileData.classNumber} - ${profileData.graduationYear}`
-
-      const { data: existingCommunities } = await supabase
-        .from("communities")
-        .select("id")
-        .eq("class_number", Number.parseInt(profileData.classNumber))
-        .eq("graduation_year", Number.parseInt(profileData.graduationYear))
-        .eq("school_name", profileData.schoolName)
-
-      let communityId = existingCommunities?.[0]?.id
-
-      if (!communityId) {
-        const { data: newCommunities, error: communityError } = await supabase
-          .from("communities")
-          .insert({
-            name: communityName,
-            description: `Community for Class ${profileData.classNumber} graduating in ${profileData.graduationYear}`,
-            class_number: Number.parseInt(profileData.classNumber),
-            graduation_year: Number.parseInt(profileData.graduationYear),
-            school_name: profileData.schoolName,
-            icon: "🎓",
-            color: "bg-blue-500",
-          })
-          .select("id")
-
-        if (communityError) throw communityError
-        communityId = newCommunities?.[0]?.id
+      if (functionError) {
+        console.error("Function error:", functionError)
+        throw functionError
       }
 
-      // Add user to community
-      if (communityId) {
-        const { error: memberError } = await supabase.from("community_members").insert({
-          user_id: user.id,
-          community_id: communityId,
-        })
+      console.log("Function result:", data)
 
-        if (memberError) throw memberError
+      if (data && !data.success) {
+        throw new Error(data.error || "Failed to create profile")
       }
 
+      console.log("Profile created successfully!")
       onProfileCreated()
     } catch (err: any) {
-      setError(err.message)
+      console.error("Profile creation error:", err)
+      setError(err.message || "Failed to create profile")
     } finally {
       setLoading(false)
     }
   }
 
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 20 }, (_, i) => currentYear - 10 + i)
+  // Generate years from 2000 to 2025
+  const years = Array.from({ length: 26 }, (_, i) => 2000 + i)
   const classes = Array.from({ length: 12 }, (_, i) => i + 1)
 
   return (
@@ -284,6 +257,7 @@ function ProfileSetup({ user, onProfileCreated }: { user: any; onProfileCreated:
                 value={profileData.fullName}
                 onChange={(e) => setProfileData({ ...profileData, fullName: e.target.value })}
                 required
+                disabled={loading}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -292,6 +266,7 @@ function ProfileSetup({ user, onProfileCreated }: { user: any; onProfileCreated:
                 <Select
                   value={profileData.classNumber}
                   onValueChange={(value) => setProfileData({ ...profileData, classNumber: value })}
+                  disabled={loading}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select class" />
@@ -310,6 +285,7 @@ function ProfileSetup({ user, onProfileCreated }: { user: any; onProfileCreated:
                 <Select
                   value={profileData.graduationYear}
                   onValueChange={(value) => setProfileData({ ...profileData, graduationYear: value })}
+                  disabled={loading}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select year" />
@@ -333,6 +309,7 @@ function ProfileSetup({ user, onProfileCreated }: { user: any; onProfileCreated:
                 value={profileData.schoolName}
                 onChange={(e) => setProfileData({ ...profileData, schoolName: e.target.value })}
                 required
+                disabled={loading}
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
@@ -405,7 +382,10 @@ export default function SchoolCommunityChat() {
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
       </div>
     )
   }

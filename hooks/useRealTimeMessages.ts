@@ -97,7 +97,7 @@ export function useRealTimeMessages(communityId: string | null) {
           if (!isMounted) return
 
           try {
-            // Fetch the complete message with profile data
+            // Fetch the complete message with profile data - NO .single()
             const { data: messageData, error: messageError } = await supabase
               .from("messages")
               .select(`
@@ -109,23 +109,25 @@ export function useRealTimeMessages(communityId: string | null) {
                 )
               `)
               .eq("id", payload.new.id)
-              .single()
 
             if (messageError) {
               console.error("Error fetching new message details:", messageError)
               return
             }
 
-            if (messageData && isMounted) {
-              console.log("Adding new message to state:", messageData)
+            // Take the first result if any
+            const newMessage = messageData?.[0]
+
+            if (newMessage && isMounted) {
+              console.log("Adding new message to state:", newMessage)
               setMessages((prevMessages) => {
                 // Check if message already exists to prevent duplicates
-                const exists = prevMessages.some((msg) => msg.id === messageData.id)
+                const exists = prevMessages.some((msg) => msg.id === newMessage.id)
                 if (exists) {
                   console.log("Message already exists, skipping")
                   return prevMessages
                 }
-                return [...prevMessages, messageData as Message]
+                return [...prevMessages, newMessage as Message]
               })
             }
           } catch (err) {
@@ -163,6 +165,7 @@ export function useRealTimeMessages(communityId: string | null) {
     try {
       console.log("Sending message:", { content, userId, communityId })
 
+      // Insert message and get result - NO .single()
       const { data, error } = await supabase
         .from("messages")
         .insert({
@@ -178,7 +181,6 @@ export function useRealTimeMessages(communityId: string | null) {
             is_online
           )
         `)
-        .single()
 
       if (error) {
         console.error("Error sending message:", error)
@@ -187,10 +189,8 @@ export function useRealTimeMessages(communityId: string | null) {
 
       console.log("Message sent successfully:", data)
 
-      // Note: We don't add the message to state here because the real-time subscription will handle it
-      // This prevents duplicate messages
-
-      return data
+      // Return the first result
+      return data?.[0]
     } catch (err) {
       console.error("Failed to send message:", err)
       throw err

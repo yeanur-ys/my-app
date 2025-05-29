@@ -22,8 +22,8 @@ export function AuthForm() {
     email: "",
     password: "",
     fullName: "",
-    classNumber: "",
-    graduationYear: "",
+    classNumber: "1",
+    graduationYear: "2025",
     schoolName: "Default School",
   })
 
@@ -39,8 +39,9 @@ export function AuthForm() {
 
     try {
       console.log("Attempting sign in...")
+
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: signInData.email,
+        email: signInData.email.trim(),
         password: signInData.password,
       })
 
@@ -50,6 +51,9 @@ export function AuthForm() {
       }
 
       console.log("Sign in successful:", data.user?.id)
+
+      // Clear form
+      setSignInData({ email: "", password: "" })
     } catch (err: any) {
       console.error("Sign in error:", err)
       setError(err.message || "An error occurred during sign in")
@@ -67,10 +71,29 @@ export function AuthForm() {
     try {
       console.log("Starting sign up process...")
 
-      // Sign up the user
+      // Validate required fields
+      if (!signUpData.fullName.trim()) {
+        throw new Error("Full name is required")
+      }
+      if (!signUpData.classNumber) {
+        throw new Error("Class number is required")
+      }
+      if (!signUpData.graduationYear) {
+        throw new Error("Graduation year is required")
+      }
+
+      // Sign up the user with metadata
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: signUpData.email,
+        email: signUpData.email.trim(),
         password: signUpData.password,
+        options: {
+          data: {
+            full_name: signUpData.fullName.trim(),
+            class_number: signUpData.classNumber,
+            graduation_year: signUpData.graduationYear,
+            school_name: signUpData.schoolName.trim(),
+          },
+        },
       })
 
       if (authError) {
@@ -80,99 +103,17 @@ export function AuthForm() {
 
       if (authData.user) {
         console.log("User created:", authData.user.id)
+        setSuccess("Account created successfully! Please check your email to verify your account, then sign in.")
 
-        // Check if profile already exists (without .single())
-        const { data: existingProfiles } = await supabase.from("profiles").select("id").eq("id", authData.user.id)
-
-        if (existingProfiles && existingProfiles.length > 0) {
-          console.log("Profile already exists, skipping creation")
-        } else {
-          // Create profile
-          console.log("Creating profile...")
-          const { error: profileError } = await supabase.from("profiles").insert({
-            id: authData.user.id,
-            email: signUpData.email,
-            full_name: signUpData.fullName,
-            class_number: Number.parseInt(signUpData.classNumber),
-            graduation_year: Number.parseInt(signUpData.graduationYear),
-            school_name: signUpData.schoolName,
-          })
-
-          if (profileError) {
-            console.error("Profile creation error:", profileError)
-            throw profileError
-          }
-          console.log("Profile created successfully")
-        }
-
-        // Create or get community for this class and year
-        const communityName = `Class ${signUpData.classNumber} - ${signUpData.graduationYear}`
-        console.log("Looking for community:", communityName)
-
-        // Check for existing community (without .single())
-        const { data: existingCommunities } = await supabase
-          .from("communities")
-          .select("id")
-          .eq("class_number", Number.parseInt(signUpData.classNumber))
-          .eq("graduation_year", Number.parseInt(signUpData.graduationYear))
-          .eq("school_name", signUpData.schoolName)
-
-        let communityId = existingCommunities?.[0]?.id
-
-        if (!communityId) {
-          console.log("Creating new community...")
-          // Create new community
-          const { data: newCommunities, error: communityError } = await supabase
-            .from("communities")
-            .insert({
-              name: communityName,
-              description: `Community for Class ${signUpData.classNumber} graduating in ${signUpData.graduationYear}`,
-              class_number: Number.parseInt(signUpData.classNumber),
-              graduation_year: Number.parseInt(signUpData.graduationYear),
-              school_name: signUpData.schoolName,
-              icon: "🎓",
-              color: "bg-blue-500",
-            })
-            .select("id")
-
-          if (communityError) {
-            console.error("Community creation error:", communityError)
-            throw communityError
-          }
-          communityId = newCommunities?.[0]?.id
-          console.log("Community created:", communityId)
-        } else {
-          console.log("Using existing community:", communityId)
-        }
-
-        // Add user to community
-        if (communityId) {
-          console.log("Adding user to community...")
-
-          // Check if membership already exists (without .single())
-          const { data: existingMemberships } = await supabase
-            .from("community_members")
-            .select("id")
-            .eq("user_id", authData.user.id)
-            .eq("community_id", communityId)
-
-          if (existingMemberships && existingMemberships.length > 0) {
-            console.log("User already member of community")
-          } else {
-            const { error: memberError } = await supabase.from("community_members").insert({
-              user_id: authData.user.id,
-              community_id: communityId,
-            })
-
-            if (memberError) {
-              console.error("Membership creation error:", memberError)
-              throw memberError
-            }
-            console.log("User added to community successfully")
-          }
-        }
-
-        setSuccess("Account created successfully! You can now sign in.")
+        // Clear form
+        setSignUpData({
+          email: "",
+          password: "",
+          fullName: "",
+          classNumber: "1",
+          graduationYear: "2025",
+          schoolName: "Default School",
+        })
       }
     } catch (err: any) {
       console.error("Sign up error:", err)
@@ -182,8 +123,8 @@ export function AuthForm() {
     }
   }
 
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 20 }, (_, i) => currentYear - 10 + i)
+  // Generate years from 2000 to 2025
+  const years = Array.from({ length: 26 }, (_, i) => 2000 + i)
   const classes = Array.from({ length: 12 }, (_, i) => i + 1)
 
   return (
@@ -211,6 +152,7 @@ export function AuthForm() {
                     value={signInData.email}
                     onChange={(e) => setSignInData({ ...signInData, email: e.target.value })}
                     required
+                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -222,6 +164,7 @@ export function AuthForm() {
                     value={signInData.password}
                     onChange={(e) => setSignInData({ ...signInData, password: e.target.value })}
                     required
+                    disabled={loading}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
@@ -242,6 +185,7 @@ export function AuthForm() {
                     value={signUpData.fullName}
                     onChange={(e) => setSignUpData({ ...signUpData, fullName: e.target.value })}
                     required
+                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -253,6 +197,7 @@ export function AuthForm() {
                     value={signUpData.email}
                     onChange={(e) => setSignUpData({ ...signUpData, email: e.target.value })}
                     required
+                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -260,10 +205,12 @@ export function AuthForm() {
                   <Input
                     id="signup-password"
                     type="password"
-                    placeholder="Create a password"
+                    placeholder="Create a password (min 6 characters)"
                     value={signUpData.password}
                     onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
                     required
+                    minLength={6}
+                    disabled={loading}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -272,6 +219,7 @@ export function AuthForm() {
                     <Select
                       value={signUpData.classNumber}
                       onValueChange={(value) => setSignUpData({ ...signUpData, classNumber: value })}
+                      disabled={loading}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select class" />
@@ -290,6 +238,7 @@ export function AuthForm() {
                     <Select
                       value={signUpData.graduationYear}
                       onValueChange={(value) => setSignUpData({ ...signUpData, graduationYear: value })}
+                      disabled={loading}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select year" />
@@ -313,6 +262,7 @@ export function AuthForm() {
                     value={signUpData.schoolName}
                     onChange={(e) => setSignUpData({ ...signUpData, schoolName: e.target.value })}
                     required
+                    disabled={loading}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
