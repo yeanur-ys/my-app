@@ -11,14 +11,13 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [initialized, setInitialized] = useState(false)
 
   useEffect(() => {
     let mounted = true
 
-    const initializeAuth = async () => {
+    // Get initial session
+    const getInitialSession = async () => {
       try {
-        // Get initial session
         const {
           data: { session },
           error,
@@ -30,7 +29,6 @@ export function useAuth() {
             setUser(null)
             setProfile(null)
             setLoading(false)
-            setInitialized(true)
           }
           return
         }
@@ -43,23 +41,18 @@ export function useAuth() {
             setProfile(null)
             setLoading(false)
           }
-          setInitialized(true)
         }
       } catch (error) {
-        console.error("Unexpected error initializing auth:", error)
+        console.error("Unexpected error getting session:", error)
         if (mounted) {
           setUser(null)
           setProfile(null)
           setLoading(false)
-          setInitialized(true)
         }
       }
     }
 
-    // Only initialize once
-    if (!initialized) {
-      initializeAuth()
-    }
+    getInitialSession()
 
     // Listen for auth changes
     const {
@@ -67,7 +60,7 @@ export function useAuth() {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("Auth state changed:", event, session?.user?.id)
 
-      if (mounted && initialized) {
+      if (mounted) {
         setUser(session?.user ?? null)
         if (session?.user) {
           await fetchProfile(session.user.id)
@@ -80,14 +73,15 @@ export function useAuth() {
 
     const fetchProfile = async (userId: string) => {
       try {
-        console.log("Fetching profile for user:", userId)
+        console.log("Starting fetchProfile for user:", userId)
 
         if (!mounted) return
 
-        setLoading(true)
+        // Use a simple select query without .single()
+        const profileQuery = supabase.from("profiles").select("*").eq("id", userId)
 
-        // Simple select query without .single()
-        const { data: profileData, error: profileError } = await supabase.from("profiles").select("*").eq("id", userId)
+        console.log("Executing profile query...")
+        const { data: profileData, error: profileError } = await profileQuery
 
         if (profileError) {
           console.error("Profile query error:", profileError)
@@ -98,7 +92,7 @@ export function useAuth() {
           return
         }
 
-        console.log("Profile query result:", profileData)
+        console.log("Profile query successful, data:", profileData)
 
         if (!mounted) return
 
@@ -125,22 +119,16 @@ export function useAuth() {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [initialized])
+  }, [])
 
   const signOut = async () => {
     try {
-      setLoading(true)
       const { error } = await supabase.auth.signOut()
       if (error) {
         console.error("Error signing out:", error)
       }
-      // Reset state
-      setUser(null)
-      setProfile(null)
-      setLoading(false)
     } catch (error) {
       console.error("Unexpected error during sign out:", error)
-      setLoading(false)
     }
   }
 

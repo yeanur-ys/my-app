@@ -22,8 +22,8 @@ export function AuthForm() {
     email: "",
     password: "",
     fullName: "",
-    classNumber: "1",
-    graduationYear: "2025",
+    classNumber: "",
+    graduationYear: "",
     schoolName: "Default School",
   })
 
@@ -39,9 +39,8 @@ export function AuthForm() {
 
     try {
       console.log("Attempting sign in...")
-
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: signInData.email.trim(),
+        email: signInData.email,
         password: signInData.password,
       })
 
@@ -51,9 +50,6 @@ export function AuthForm() {
       }
 
       console.log("Sign in successful:", data.user?.id)
-
-      // Clear form
-      setSignInData({ email: "", password: "" })
     } catch (err: any) {
       console.error("Sign in error:", err)
       setError(err.message || "An error occurred during sign in")
@@ -71,27 +67,16 @@ export function AuthForm() {
     try {
       console.log("Starting sign up process...")
 
-      // Validate required fields
-      if (!signUpData.fullName.trim()) {
-        throw new Error("Full name is required")
-      }
-      if (!signUpData.classNumber) {
-        throw new Error("Class number is required")
-      }
-      if (!signUpData.graduationYear) {
-        throw new Error("Graduation year is required")
-      }
-
-      // Sign up the user with metadata
+      // Sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: signUpData.email.trim(),
+        email: signUpData.email,
         password: signUpData.password,
         options: {
           data: {
-            full_name: signUpData.fullName.trim(),
+            full_name: signUpData.fullName,
             class_number: signUpData.classNumber,
             graduation_year: signUpData.graduationYear,
-            school_name: signUpData.schoolName.trim(),
+            school_name: signUpData.schoolName,
           },
         },
       })
@@ -104,16 +89,6 @@ export function AuthForm() {
       if (authData.user) {
         console.log("User created:", authData.user.id)
         setSuccess("Account created successfully! Please check your email to verify your account, then sign in.")
-
-        // Clear form
-        setSignUpData({
-          email: "",
-          password: "",
-          fullName: "",
-          classNumber: "1",
-          graduationYear: "2025",
-          schoolName: "Default School",
-        })
       }
     } catch (err: any) {
       console.error("Sign up error:", err)
@@ -123,8 +98,8 @@ export function AuthForm() {
     }
   }
 
-  // Generate years from 2000 to 2025
-  const years = Array.from({ length: 26 }, (_, i) => 2000 + i)
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: 20 }, (_, i) => currentYear - 10 + i)
   const classes = Array.from({ length: 12 }, (_, i) => i + 1)
 
   return (
@@ -152,7 +127,6 @@ export function AuthForm() {
                     value={signInData.email}
                     onChange={(e) => setSignInData({ ...signInData, email: e.target.value })}
                     required
-                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -164,7 +138,6 @@ export function AuthForm() {
                     value={signInData.password}
                     onChange={(e) => setSignInData({ ...signInData, password: e.target.value })}
                     required
-                    disabled={loading}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
@@ -185,7 +158,6 @@ export function AuthForm() {
                     value={signUpData.fullName}
                     onChange={(e) => setSignUpData({ ...signUpData, fullName: e.target.value })}
                     required
-                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -197,7 +169,6 @@ export function AuthForm() {
                     value={signUpData.email}
                     onChange={(e) => setSignUpData({ ...signUpData, email: e.target.value })}
                     required
-                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -205,12 +176,10 @@ export function AuthForm() {
                   <Input
                     id="signup-password"
                     type="password"
-                    placeholder="Create a password (min 6 characters)"
+                    placeholder="Create a password"
                     value={signUpData.password}
                     onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
                     required
-                    minLength={6}
-                    disabled={loading}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -219,7 +188,6 @@ export function AuthForm() {
                     <Select
                       value={signUpData.classNumber}
                       onValueChange={(value) => setSignUpData({ ...signUpData, classNumber: value })}
-                      disabled={loading}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select class" />
@@ -238,7 +206,6 @@ export function AuthForm() {
                     <Select
                       value={signUpData.graduationYear}
                       onValueChange={(value) => setSignUpData({ ...signUpData, graduationYear: value })}
-                      disabled={loading}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select year" />
@@ -262,7 +229,6 @@ export function AuthForm() {
                     value={signUpData.schoolName}
                     onChange={(e) => setSignUpData({ ...signUpData, schoolName: e.target.value })}
                     required
-                    disabled={loading}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
