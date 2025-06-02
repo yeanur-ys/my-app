@@ -2,18 +2,22 @@ export interface Profile {
   id: string;
   name: string;
   year: number;
-  class: string;
+  class_number: number;
+  avatar_url?: string;
+  full_name?: string;
 }
 
 export interface Community {
   id: string;
   name: string;
   color: string;
-  owner_id: string;
+  icon?: string;
+  class_number: number;
+  graduation_year: number;
 }
 
 export interface User {
   id: string;
-  email: string;
-  // Add other user fields as needed
+  email?: string;
+  user_metadata?: any;
 }
