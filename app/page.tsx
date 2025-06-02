@@ -98,9 +98,7 @@ export default function SchoolCommunityChat() {
         <SidebarInset className="flex flex-col">
           {/* Header */}
           <header className="flex h-14 items-center justify-between border-b bg-background px-4">
-            <div className="flex items-center gap-2">
-              {/* SidebarTrigger, Title, etc. */}
-            </div>
+            <div className="flex items-center gap-2"></div>
             <div className="flex items-center gap-2">
               <ThemeToggle />
               <UserAvatarMenu profile={profile} signOut={signOut} />
