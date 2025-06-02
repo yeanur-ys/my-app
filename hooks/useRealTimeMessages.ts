@@ -1,206 +1,57 @@
-"use client"
-
-import { useEffect, useState, useRef } from "react"
-import { supabase } from "@/lib/supabase"
-import type { Database } from "@/lib/supabase"
-import type { RealtimeChannel } from "@supabase/supabase-js"
-
-type Message = Database["public"]["Tables"]["messages"]["Row"] & {
-  profiles: {
-    full_name: string | null
-    avatar_url: string | null
-    is_online: boolean
-  }
-}
+import { useEffect, useState, useCallback } from "react";
+import { supabase } from "@/lib/supabase";
 
 export function useRealTimeMessages(communityId: string | null) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const channelRef = useRef<RealtimeChannel | null>(null)
+  const [messages, setMessages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Fetch messages on load or community change
   useEffect(() => {
     if (!communityId) {
-      setMessages([])
-      setLoading(false)
-      return
+      setMessages([]);
+      setLoading(false);
+      return;
     }
+    setLoading(true);
+    supabase
+      .from("messages")
+      .select("*")
+      .eq("community_id", communityId)
+      .order("created_at", { ascending: true })
+      .then(({ data, error }) => {
+        if (error) setError(error.message);
+        else setMessages(data || []);
+        setLoading(false);
+      });
+  }, [communityId]);
 
-    let isMounted = true
-
-    // Fetch initial messages
-    const fetchMessages = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-
-        console.log("Fetching messages for community:", communityId)
-
-        const { data, error: fetchError } = await supabase
-          .from("messages")
-          .select(`
-            *,
-            profiles:user_id (
-              full_name,
-              avatar_url,
-              is_online
-            )
-          `)
-          .eq("community_id", communityId)
-          .order("created_at", { ascending: true })
-
-        if (fetchError) {
-          console.error("Error fetching messages:", fetchError)
-          setError(fetchError.message)
-        } else if (isMounted) {
-          console.log("Fetched messages:", data)
-          setMessages(data as Message[])
-        }
-      } catch (err) {
-        console.error("Unexpected error:", err)
-        if (isMounted) {
-          setError("Failed to load messages")
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
-      }
-    }
-
-    fetchMessages()
-
-    // Clean up previous subscription
-    if (channelRef.current) {
-      console.log("Unsubscribing from previous channel")
-      supabase.removeChannel(channelRef.current)
-      channelRef.current = null
-    }
-
-    // Create new channel for real-time updates
-    const channelName = `messages:community_id=eq.${communityId}`
-    console.log("Creating channel:", channelName)
-
-    channelRef.current = supabase
-      .channel(channelName)
+  // Subscribe to new messages
+  useEffect(() => {
+    if (!communityId) return;
+    const channel = supabase
+      .channel("public:messages")
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `community_id=eq.${communityId}`,
-        },
-        async (payload) => {
-          console.log("Real-time message received:", payload)
-
-          if (!isMounted) return
-
-          try {
-            // Fetch the complete message with profile data - NO .single()
-            const { data: messageData, error: messageError } = await supabase
-              .from("messages")
-              .select(`
-                *,
-                profiles:user_id (
-                  full_name,
-                  avatar_url,
-                  is_online
-                )
-              `)
-              .eq("id", payload.new.id)
-
-            if (messageError) {
-              console.error("Error fetching new message details:", messageError)
-              return
-            }
-
-            // Take the first result if any
-            const newMessage = messageData?.[0]
-
-            if (newMessage && isMounted) {
-              console.log("Adding new message to state:", newMessage)
-              setMessages((prevMessages) => {
-                // Check if message already exists to prevent duplicates
-                const exists = prevMessages.some((msg) => msg.id === newMessage.id)
-                if (exists) {
-                  console.log("Message already exists, skipping")
-                  return prevMessages
-                }
-                return [...prevMessages, newMessage as Message]
-              })
-            }
-          } catch (err) {
-            console.error("Error processing real-time message:", err)
-          }
-        },
-      )
-      .subscribe((status) => {
-        console.log("Subscription status:", status)
-        if (status === "SUBSCRIBED") {
-          console.log("Successfully subscribed to real-time updates")
-        } else if (status === "CHANNEL_ERROR") {
-          console.error("Channel subscription error")
-          if (isMounted) {
-            setError("Real-time connection failed")
-          }
+        { event: "INSERT", schema: "public", table: "messages", filter: `community_id=eq.${communityId}` },
+        (payload) => {
+          setMessages((msgs) => [...msgs, payload.new]);
         }
-      })
+      )
+      .subscribe();
 
     return () => {
-      isMounted = false
-      if (channelRef.current) {
-        console.log("Cleaning up channel subscription")
-        supabase.removeChannel(channelRef.current)
-        channelRef.current = null
-      }
-    }
-  }, [communityId])
+      supabase.removeChannel(channel);
+    };
+  }, [communityId]);
 
-  const sendMessage = async (content: string, userId: string) => {
-    if (!communityId || !content.trim()) {
-      throw new Error("Missing community ID or content")
-    }
+  const sendMessage = useCallback(
+    async (content: string, userId: string) => {
+      if (!communityId) return;
+      await supabase.from("messages").insert({ community_id: communityId, user_id: userId, content });
+    },
+    [communityId]
+  );
 
-    try {
-      console.log("Sending message:", { content, userId, communityId })
-
-      // Insert message and get result - NO .single()
-      const { data, error } = await supabase
-        .from("messages")
-        .insert({
-          content: content.trim(),
-          user_id: userId,
-          community_id: communityId,
-        })
-        .select(`
-          *,
-          profiles:user_id (
-            full_name,
-            avatar_url,
-            is_online
-          )
-        `)
-
-      if (error) {
-        console.error("Error sending message:", error)
-        throw error
-      }
-
-      console.log("Message sent successfully:", data)
-
-      // Return the first result
-      return data?.[0]
-    } catch (err) {
-      console.error("Failed to send message:", err)
-      throw err
-    }
-  }
-
-  return {
-    messages,
-    loading,
-    error,
-    sendMessage,
-  }
+  return { messages, loading, error, sendMessage };
 }
